@@ -1,0 +1,38 @@
+# --- secrets -------------------------------------------------------------- #
+.env
+
+# --- the two directories that must never be committed --------------------- #
+# clips/ holds the only raw footage this system ever writes. It stays local.
+clips/*
+!clips/.gitkeep
+
+# data/ holds the event database and the anonymised skeleton snapshots.
+data/*
+!data/.gitkeep
+
+# --- auto-downloaded pretrained weights (~30 MB, fetched on first run) ----- #
+models/*
+!models/.gitkeep
+
+# --- python --------------------------------------------------------------- #
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+.coverage
+htmlcov/
+
+# --- editors / os --------------------------------------------------------- #
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp
+
+# --- stray artefacts ------------------------------------------------------ #
+*.log
+yolov8*.pt
+openh264-*.dll

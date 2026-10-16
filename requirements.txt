@@ -1,0 +1,30 @@
+# ARJUN — dependencies
+#
+# Install with:   python -m pip install -r requirements.txt
+#
+# Pretrained weights are NOT listed here. They are fetched on first run into
+# models/ by backend/vision/model_store.py (about 30 MB total) so that a clone
+# of this repo stays small. Every one of them is credited in the README.
+
+# --- vision --------------------------------------------------------------- #
+opencv-python>=4.10            # capture, drawing, H.264 clip writing
+numpy>=1.26                    # arrays, geometry, the heatmap accumulator
+ultralytics>=8.3               # YOLOv8n detection + pose, bundled ByteTrack
+mediapipe>=0.10.14             # hand landmarks (SOS) + face mesh (head yaw)
+
+# ultralytics pulls torch in itself, but pinning the floor here documents that
+# we knowingly depend on it and keeps `pip check` honest.
+torch>=2.2
+
+# --- backend -------------------------------------------------------------- #
+fastapi>=0.115                 # HTTP + WebSocket app
+uvicorn>=0.30                  # ASGI server
+python-multipart>=0.0.9        # form posts from the zone editor
+python-dotenv>=1.0             # .env loading
+requests>=2.31                 # Telegram + Twilio REST calls
+
+# --- assistant ------------------------------------------------------------ #
+anthropic>=0.40                # Claude: natural-language search + reports
+
+# --- tests ---------------------------------------------------------------- #
+pytest>=8.0

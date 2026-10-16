@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="codex">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ARJUN · Campus Guardian</title>
+<meta name="description" content="A privacy-first campus safety system. It watches no one, until someone gives it a reason to.">
+<meta name="color-scheme" content="dark">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0a0b'/><circle cx='16' cy='16' r='7' fill='none' stroke='%23d6a04a' stroke-width='1.5'/><circle cx='16' cy='16' r='2.5' fill='%23d6a04a'/></svg>">
+</head>
+<body>
+
+<!-- Paper grain. One SVG, used as a tiled background by the stylesheet. -->
+<svg class="grain" aria-hidden="true">
+  <filter id="grain-filter">
+    <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+  </filter>
+  <rect width="100%" height="100%" filter="url(#grain-filter)"/>
+</svg>
+
+<a class="skip" href="#wall">Skip to the camera wall</a>
+
+<!-- ───────────────────────────── masthead ───────────────────────────── -->
+<header class="masthead">
+  <div class="masthead__identity">
+    <h1 class="wordmark">Arjun</h1>
+    <p class="wordmark__sub">Campus&nbsp;Guardian</p>
+    <p class="motto">“Arjuna saw only the eye of the bird.”</p>
+  </div>
+
+  <div class="masthead__thesis">
+    <p>Ordinary cameras record thousands of people to catch one incident.
+       <strong>This one watches no one, until someone gives it a reason to.</strong></p>
+  </div>
+
+  <div class="masthead__readings" role="group" aria-label="System readings">
+    <div class="reading">
+      <span class="reading__value" id="stat-clock">--:--:--</span>
+      <span class="reading__label" id="stat-date">&nbsp;</span>
+    </div>
+    <div class="reading">
+      <span class="reading__value" id="stat-cameras">0/0</span>
+      <span class="reading__label">Cameras live</span>
+    </div>
+    <div class="reading">
+      <span class="reading__value" id="stat-people">0</span>
+      <span class="reading__label">Present now</span>
+    </div>
+    <div class="reading">
+      <span class="reading__value" id="stat-alerts">0</span>
+      <span class="reading__label">Alerts today</span>
+    </div>
+    <div class="reading reading--wide">
+      <span class="reading__value" id="stat-fps">0</span>
+      <span class="reading__label">Frames / second</span>
+    </div>
+  </div>
+
+  <div class="masthead__controls">
+    <button class="switch" id="demo-toggle" type="button" role="switch" aria-checked="false">
+      <span class="switch__dot" aria-hidden="true"></span>
+      <span class="switch__label">Demo timings</span>
+    </button>
+    <button class="ghost" id="mute-toggle" type="button" aria-pressed="false">
+      <span id="mute-label">Sound on</span>
+    </button>
+    <span class="link-state" id="link-state" data-state="connecting">Connecting</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ───────────────────────────── camera wall ───────────────────────────── -->
+<section class="folio" id="wall" aria-labelledby="wall-title">
+  <div class="folio__rule">
+    <h2 class="folio__title" id="wall-title">The wall</h2>
+    <p class="folio__note">Skeletons only. The camera image is never drawn here.</p>
+  </div>
+
+  <div class="wall" id="camera-grid">
+    <p class="empty" id="camera-empty">Waiting for the first frame…</p>
+  </div>
+</section>
+
+<div class="deck">
+
+  <!-- ─────────────────────────── observations ─────────────────────────── -->
+  <section class="folio folio--rail" aria-labelledby="obs-title">
+    <div class="folio__rule">
+      <h2 class="folio__title" id="obs-title">Observations</h2>
+      <span class="folio__count" id="obs-count">0</span>
+    </div>
+
+    <div class="filters" role="group" aria-label="Filter observations">
+      <select id="filter-camera" aria-label="Filter by camera">
+        <option value="">Every camera</option>
+      </select>
+      <select id="filter-type" aria-label="Filter by kind">
+        <option value="">Every kind</option>
+      </select>
+      <select id="filter-severity" aria-label="Filter by severity">
+        <option value="">Any severity</option>
+        <option value="critical">Critical only</option>
+        <option value="warning">Warning and up</option>
+        <option value="info">Info</option>
+      </select>
+    </div>
+
+    <ol class="timeline" id="timeline">
+      <li class="empty">Nothing has happened yet. That is the normal state.</li>
+    </ol>
+  </section>
+
+  <div class="deck__main">
+
+    <!-- ───────────────────────── ask the cameras ───────────────────────── -->
+    <section class="folio" aria-labelledby="ask-title">
+      <div class="folio__rule">
+        <h2 class="folio__title" id="ask-title">Ask the cameras</h2>
+        <span class="folio__note" id="ask-engine">reading the event ledger</span>
+      </div>
+
+      <form class="ask" id="ask-form">
+        <label class="sr-only" for="ask-input">Your question</label>
+        <input id="ask-input" type="text" autocomplete="off"
+               placeholder="Any falls near the library today?">
+        <button type="submit" class="solid">Ask</button>
+      </form>
+
+      <div class="ask__suggestions" id="ask-suggestions">
+        <button type="button">Any falls today?</button>
+        <button type="button">Summarise everything after 6 PM</button>
+        <button type="button">Were any bags left unattended?</button>
+        <button type="button">What was the most serious thing today?</button>
+      </div>
+
+      <div class="ask__answer" id="ask-answer" hidden></div>
+      <p class="ask__footnote">
+        Only structured event records leave this machine — never an image, a
+        clip, or anything that could identify a person.
+      </p>
+    </section>
+
+    <!-- ───────────────────────────── analytics ───────────────────────────── -->
+    <section class="folio" aria-labelledby="chart-title">
+      <div class="folio__rule">
+        <h2 class="folio__title" id="chart-title">Patterns</h2>
+        <div class="folio__actions">
+          <select id="analytics-range" aria-label="Time range">
+            <option value="1">Last hour</option>
+            <option value="6">Last 6 hours</option>
+            <option value="12" selected>Last 12 hours</option>
+            <option value="24">Last 24 hours</option>
+            <option value="168">This week</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="charts">
+        <figure class="chart">
+          <figcaption>Incidents by kind</figcaption>
+          <canvas id="chart-types" height="190"></canvas>
+        </figure>
+        <figure class="chart">
+          <figcaption>People per crowd zone, over time</figcaption>
+          <canvas id="chart-crowd" height="190"></canvas>
+        </figure>
+      </div>
+      <div class="occupancy" id="occupancy"></div>
+    </section>
+
+    <!-- ──────────────────────── the privacy ledger ──────────────────────── -->
+    <section class="folio ledger" id="ledger" aria-labelledby="ledger-title">
+      <div class="folio__rule">
+        <h2 class="folio__title" id="ledger-title">The privacy ledger</h2>
+        <p class="folio__note">What this system holds, and what it refuses to.</p>
+      </div>
+
+      <div class="ledger__hero">
+        <div class="ledger__figure">
+          <span class="ledger__number" id="ledger-hours">0</span>
+          <span class="ledger__unit">hours</span>
+        </div>
+        <p class="ledger__caption">
+          of continuous footage stored, since the day this was switched on.
+          <span>Nothing in the system is capable of writing it.</span>
+        </p>
+      </div>
+
+      <div class="ledger__books">
+        <div class="book">
+          <h3 class="book__head">Held</h3>
+          <dl class="book__rows" id="ledger-held"></dl>
+        </div>
+        <div class="book book--refused">
+          <h3 class="book__head">Never held</h3>
+          <dl class="book__rows" id="ledger-refused"></dl>
+        </div>
+      </div>
+
+      <div class="ledger__audit">
+        <h3 class="book__head">Who looked, and when</h3>
+        <p class="book__note">
+          Unlocking a raw camera is itself an incident. Every one is written
+          here, and cannot be deleted from the dashboard.
+        </p>
+        <ol class="audit" id="audit-list">
+          <li class="empty">No one has opened a raw feed.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── the rules ───────────────────────── -->
+    <section class="folio" aria-labelledby="rules-title">
+      <div class="folio__rule">
+        <h2 class="folio__title" id="rules-title">What it is watching for</h2>
+        <p class="folio__note">Eleven rules, each reading geometry — never pixels.</p>
+      </div>
+      <div class="rules" id="rules-list"></div>
+    </section>
+
+  </div>
+</div>
+
+</main>
+
+<footer class="colophon">
+  <p><span class="colophon__mark">Arjun</span> · Campus Guardian ·
+     <span id="colophon-version">v1.0.0</span></p>
+  <p id="colophon-venue">Renaissance · Abhiyantriki 2026 · CSI KJSSE</p>
+</footer>
+
+<!-- ───────────────────────────── dialogs ───────────────────────────── -->
+
+<!-- PIN -->
+<dialog class="sheet sheet--narrow" id="pin-dialog">
+  <form method="dialog" id="pin-form">
+    <h2 class="sheet__title">Staff PIN</h2>
+    <p class="sheet__body" id="pin-reason">
+      Raw footage is the one thing here that shows faces. Opening it is
+      recorded in the privacy ledger, with the time and the camera.
+    </p>
+    <input type="password" id="pin-input" inputmode="numeric" autocomplete="off"
+           placeholder="••••" aria-label="Staff PIN">
+    <p class="sheet__error" id="pin-error" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit">Cancel</button>
+      <button value="ok" class="solid" type="submit" id="pin-submit">Unlock</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- Zone editor -->
+<dialog class="sheet sheet--wide" id="zone-dialog">
+  <div class="sheet__head">
+    <h2 class="sheet__title">Zones on <span id="zone-camera">—</span></h2>
+    <button class="ghost" id="zone-close" type="button">Close</button>
+  </div>
+
+  <div class="zone-editor">
+    <div class="zone-editor__stage">
+      <canvas id="zone-canvas"></canvas>
+      <p class="zone-editor__hint" id="zone-hint">
+        Click to place corners. Click the first corner again, or press Enter,
+        to close the shape.
+      </p>
+    </div>
+
+    <aside class="zone-editor__side">
+      <label class="field">
+        <span>Kind</span>
+        <select id="zone-type">
+          <option value="restricted">Restricted area</option>
+          <option value="loiter">Loiter watch</option>
+          <option value="crowd">Crowd zone</option>
+          <option value="exit">Fire exit</option>
+          <option value="desk">Exam desk</option>
+          <option value="line">Counting line</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Name</span>
+        <input type="text" id="zone-name" placeholder="West stairwell">
+      </label>
+      <p class="field__hint" id="zone-type-hint"></p>
+
+      <div class="zone-editor__buttons">
+        <button class="solid" id="zone-save" type="button" disabled>Save zone</button>
+        <button class="ghost" id="zone-undo" type="button">Undo point</button>
+        <button class="ghost" id="zone-clear" type="button">Start over</button>
+      </div>
+
+      <h3 class="book__head">On this camera</h3>
+      <ul class="zone-list" id="zone-list"></ul>
+    </aside>
+  </div>
+</dialog>
+
+<!-- Incident detail -->
+<dialog class="sheet sheet--wide" id="event-dialog">
+  <div class="sheet__head">
+    <h2 class="sheet__title" id="event-title">Incident</h2>
+    <button class="ghost" id="event-close" type="button">Close</button>
+  </div>
+  <div class="event-detail" id="event-detail"></div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

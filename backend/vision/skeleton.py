@@ -291,6 +291,104 @@ def visible_fraction(kps: np.ndarray | None) -> float:
     return float((kps[:, 2] >= config.KEYPOINT_CONF).mean())
 
 
+def head_yaw_deg(kps: np.ndarray | None) -> float | None:
+    """A rough head yaw from body keypoints alone, in degrees.
+
+    This is the fallback for exam mode when the MediaPipe face mesh is not
+    available. It is a far blunter instrument than a 3D transform matrix and it
+    is used as one: only the magnitude matters, and only against a generous
+    threshold.
+
+    Two cases. With both ears visible, the nose sits between them when a person
+    faces the camera and slides towards one as they turn; the offset, scaled by
+    the ear separation, gives a signed angle. When one ear disappears behind
+    the head the turn is already large, and we say so with a fixed value rather
+    than pretending to a precision we do not have.
+
+    Returns ``None`` when there is not enough of a head to judge, which callers
+    must treat as "unknown" rather than as "facing forward".
+    """
+    if kps is None:
+        return None
+    left, right = seen(kps, L_EAR), seen(kps, R_EAR)
+    if not seen(kps, NOSE):
+        return None
+
+    nose_x = float(kps[NOSE][0])
+    if left and right:
+        lx, rx = float(kps[L_EAR][0]), float(kps[R_EAR][0])
+        span = abs(lx - rx)
+        if span < 2.0:
+            # Ears on top of each other: the head is side-on to the camera.
+            return 75.0 if nose_x > (lx + rx) / 2.0 else -75.0
+        ratio = (nose_x - (lx + rx) / 2.0) / (span / 2.0)
+        return float(max(-1.0, min(1.0, ratio)) * 70.0)
+
+    if left or right:
+        # One ear hidden behind the head: a large turn, direction known.
+        visible_x = float(kps[L_EAR if left else R_EAR][0])
+        return 55.0 if nose_x < visible_x else -55.0
+    return None
+
+
+def head_box(box: tuple[float, float, float, float],
+             kps: np.ndarray | None,
+             scale: float = 1.9) -> tuple[int, int, int, int] | None:
+    """A square crop around the head, for the face mesh to look at.
+
+    Derived from the head point and the shoulder width so it tracks the
+    subject's size. Returns integer pixel bounds, or ``None`` when there is no
+    reliable head position — we would rather skip a face than crop a torso.
+    """
+    head = head_point(kps)
+    if head is None:
+        return None
+    width = shoulder_width(kps)
+    if width is None or width < 6.0:
+        width = box_width(box) * 0.55
+    half = max(12.0, width * scale * 0.5)
+    return (int(head[0] - half), int(head[1] - half * 1.15),
+            int(head[0] + half), int(head[1] + half * 0.95))
+
+
+def hand_box(kps: np.ndarray | None, side: str,
+             scale: float = 2.2) -> tuple[int, int, int, int] | None:
+    """A square crop around one wrist, for the hand model to look at."""
+    if kps is None:
+        return None
+    idx = L_WRI if side == "left" else R_WRI
+    if not seen(kps, idx):
+        return None
+    width = shoulder_width(kps) or 30.0
+    half = max(14.0, width * scale * 0.5)
+    x, y = float(kps[idx][0]), float(kps[idx][1])
+    return (int(x - half), int(y - half), int(x + half), int(y + half))
+
+
+def hand_is_raised(kps: np.ndarray | None, side: str) -> bool:
+    """Is this wrist up near or above the shoulder line?
+
+    A cheap gate in front of an expensive model: the Signal for Help is made
+    with the hand held up, so there is no reason to run hand landmarking on
+    every arm hanging by every side in the room.
+    """
+    if kps is None:
+        return False
+    wrist = L_WRI if side == "left" else R_WRI
+    shoulder = L_SHO if side == "left" else R_SHO
+    if not seen(kps, wrist):
+        return False
+    sc = shoulder_center(kps)
+    if sc is None:
+        if not seen(kps, shoulder):
+            return False
+        sy = float(kps[shoulder][1])
+    else:
+        sy = sc[1]
+    width = shoulder_width(kps) or 30.0
+    return float(kps[wrist][1]) < sy + width * 0.35
+
+
 def bbox_from_keypoints(kps: np.ndarray,
                         pad: float = 0.12) -> tuple[float, float, float, float] | None:
     """A box around whatever joints are visible — used by the simulated scenes."""

@@ -593,7 +593,11 @@ class IncidentRecorder:
         safe_cam = "".join(ch if ch.isalnum() else "-"
                            for ch in self.camera).strip("-").lower()
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(clip.started))
-        name = f"{stamp}_{safe_cam}_{clip.key.split(':')[0]}.mp4"
+        # The event id is part of the name, not decoration: two people falling
+        # on the same camera in the same second are two incidents, and without
+        # it they raced for one filename — which also made the second writer's
+        # H.264 encoder fail to open and silently drop the clip to mp4v.
+        name = f"{stamp}_{safe_cam}_{clip.key.split(':')[0]}_e{clip.event_ref}.mp4"
         path = config.CLIPS_DIR / name
 
         first = cv2.imdecode(np.frombuffer(frames[0][1], np.uint8),

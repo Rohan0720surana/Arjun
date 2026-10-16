@@ -206,6 +206,15 @@ class AlertManager:
                     alert.clip_state = "none"
                     events_db.set_event_clip(event_id, None, "none")
 
+            # Entry/exit tallies belong to the room, not to this process:
+            # persist them so a restart does not empty the building.
+            if cand.type == "line_cross" and cand.zone is not None:
+                direction = str(meta.get("direction", "in"))
+                try:
+                    events_db.bump_occupancy(ctx.camera, cand.zone.id, direction)
+                except Exception as exc:                    # noqa: BLE001
+                    self.last_error = f"occupancy: {exc}"
+
             self._emit("alert", alert.to_dict())
             fired.append(alert)
 

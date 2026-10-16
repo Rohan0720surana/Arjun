@@ -484,6 +484,15 @@ class RawRingBuffer:
             return
         with self._lock:
             self._frames.append((ts, buf.tobytes()))
+            # Trim by age as well as by count. The deque's maxlen is sized for
+            # the target frame rate, so a camera running slower than that (a
+            # busy CPU, a stuttering stream) would hold the same number of
+            # frames spread over a longer span — and the system would be
+            # keeping more seconds of footage than it tells people it keeps.
+            # The claim on the privacy panel has to be the true one.
+            horizon = ts - self.seconds
+            while len(self._frames) > 2 and self._frames[0][0] < horizon:
+                self._frames.popleft()
             self.bytes_held = sum(len(b) for _, b in self._frames)
 
     def window(self, start_ts: float, end_ts: float) -> list[tuple[float, bytes]]:

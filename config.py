@@ -38,15 +38,51 @@ ROOT = Path(__file__).resolve().parent
 ENV_PATH = ROOT / ".env"
 load_dotenv(ENV_PATH)
 
-MODELS_DIR = ROOT / "models"          # auto-downloaded weights (gitignored)
-DATA_DIR = ROOT / "data"              # sqlite db + skeleton snapshots
-CLIPS_DIR = ROOT / "clips"            # THE ONLY place raw pixels ever land
-SNAPSHOT_DIR = DATA_DIR / "snapshots"  # anonymised skeleton renders (safe)
+def _dir(env_key: str, default: Path) -> Path:
+    """A writable directory, overridable from .env."""
+    raw = (os.getenv(env_key) or "").strip()
+    return Path(raw).expanduser().resolve() if raw else default
+
+
+MODELS_DIR = _dir("MODELS_DIR", ROOT / "models")   # auto-downloaded weights
+DATA_DIR = _dir("DATA_DIR", ROOT / "data")         # sqlite + skeleton snapshots
+CLIPS_DIR = _dir("CLIPS_DIR", ROOT / "clips")      # THE ONLY place raw pixels land
+SNAPSHOT_DIR = DATA_DIR / "snapshots"              # anonymised renders (safe)
 FRONTEND_DIR = ROOT / "frontend"
 DB_PATH = DATA_DIR / "arjun.db"
 
 for _d in (MODELS_DIR, DATA_DIR, CLIPS_DIR, SNAPSHOT_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+#: Folders that a cloud client watches and re-uploads on every write.
+_SYNCED = ("onedrive", "dropbox", "google drive", "googledrive", "icloud",
+           "nextcloud", "box sync", "creative cloud files")
+
+
+def synced_storage_warning() -> str:
+    """Warn if clips or the database are being written into a synced folder.
+
+    This is not a nicety. A fifteen-second incident clip is several megabytes,
+    and the SQLite write-ahead log changes on every event. A cloud sync client
+    watching that directory re-uploads both continuously — on the development
+    machine OneDrive's sync service became the single largest consumer of CPU
+    on the system, and the frame rate fell by two thirds. It is exactly the
+    sort of thing that would happen for the first time on stage.
+    """
+    hits = sorted({name for folder in (CLIPS_DIR, DATA_DIR)
+                   for name in _SYNCED
+                   if name in str(folder).lower()})
+    if not hits:
+        return ""
+    service = hits[0].title()
+    return "\n".join([
+        f"  ! {service} is syncing this project's clips and database.",
+        "    Incident clips are megabytes each and the database changes on",
+        "    every event, so the sync client will fight you for the CPU.",
+        "    Fix it by adding these two lines to .env:",
+        "        DATA_DIR=C:/arjun-data",
+        "        CLIPS_DIR=C:/arjun-data/clips",
+    ])
 
 
 # --------------------------------------------------------------------------- #
@@ -118,6 +154,9 @@ DEFAULT_CAMERA_SOURCES = "Main Corridor=0, Atrium (Simulated)=sim:atrium"
 
 PROC_WIDTH = _env_int("PROC_WIDTH", 640)        # frames resized to this width
 TARGET_FPS = _env_float("TARGET_FPS", 15.0)     # per-camera capture ceiling
+# Scripted scenes are a demonstration aid, not a safety feed, so they yield to
+# real cameras rather than competing with them for the CPU at the same rate.
+SIM_TARGET_FPS = _env_float("SIM_TARGET_FPS", 10.0)
 STREAM_FPS = _env_float("STREAM_FPS", 12.0)     # what the browser is fed
 JPEG_QUALITY = _env_int("JPEG_QUALITY", 72)     # dashboard stream quality
 BUFFER_JPEG_QUALITY = _env_int("BUFFER_JPEG_QUALITY", 80)  # incident clips

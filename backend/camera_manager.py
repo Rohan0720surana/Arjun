@@ -200,7 +200,12 @@ class CameraWorker(threading.Thread):
     def run(self) -> None:
         backoff = config.RECONNECT_DELAY_S
         fail_streak = 0
-        interval = 1.0 / max(config.TARGET_FPS, 1.0)
+        # A simulated scene is a demonstration aid. When it shares a machine
+        # with a camera that is actually watching a corridor, the corridor
+        # wins: measured here, letting the scenes run flat out cost the real
+        # camera half its frame rate.
+        target = config.SIM_TARGET_FPS if self.simulated else config.TARGET_FPS
+        interval = 1.0 / max(target, 1.0)
         next_tick = time.monotonic()
         fps_ema = 0.0
         last_ts = 0.0

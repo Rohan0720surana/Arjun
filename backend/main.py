@@ -43,7 +43,7 @@ from backend import ai_assistant, alerts, events_db, privacy
 from backend.alerts import AlertManager
 from backend.camera_manager import CameraManager
 from backend.pipeline import Pipeline
-from backend.vision import model_store, simscene
+from backend.vision import engine, model_store, simscene
 from backend.zone_store import (LINE_TYPES, POLYGON_TYPES, Zone, ZoneSet,
                                 validate_points)
 
@@ -246,6 +246,10 @@ async def lifespan(app: FastAPI):
     print(f"\n  {config.APP_NAME} — {config.APP_SUBTITLE}")
     print(f"  {config.APP_MOTTO}\n")
 
+    warning = config.synced_storage_warning()
+    if warning:
+        print(warning, end="\n\n")
+
     events_db.init()
     pruned = privacy.prune_clips()
     if pruned["removed"]:
@@ -256,6 +260,15 @@ async def lifespan(app: FastAPI):
         config.set_demo_mode(bool(stored))
 
     _model_report = model_store.preflight()
+
+    # Give each camera thread a fair slice of the CPU before any model loads.
+    model_cams = sum(1 for _, src in config.CAMERA_SOURCES
+                     if not src.strip().lower().startswith("sim:"))
+    threads = engine.tune_torch(len(config.CAMERA_SOURCES), model_cams)
+    print(f"  CPU: {threads['cores']} cores · {threads['streams']} camera(s), "
+          f"{threads['model_streams']} running models · "
+          f"{threads['threads']} torch threads, "
+          f"{threads['cv_threads']} OpenCV threads")
 
     alert_manager = AlertManager(broadcast=_publish)
     alert_manager.start()

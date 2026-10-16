@@ -212,7 +212,7 @@ class PrivacyRenderer:
             # bloom and about four times cheaper.
             gh, gw = glow.shape[0] // 2, glow.shape[1] // 2
             small = cv2.resize(glow, (gw, gh), interpolation=cv2.INTER_LINEAR)
-            small = cv2.GaussianBlur(small, (0, 0), 3.5)
+            small = cv2.GaussianBlur(small, (0, 0), 3.0)
             glow = cv2.resize(small, (glow.shape[1], glow.shape[0]),
                               interpolation=cv2.INTER_LINEAR)
             cv2.addWeighted(canvas, 1.0, glow, 0.62, 0.0, canvas)
@@ -407,13 +407,24 @@ def _corner_box(img: np.ndarray, box: tuple[int, int, int, int],
         cv2.line(img, (px, py), (px, py + dy * k), colour, thickness, cv2.LINE_AA)
 
 
-def _dashed_poly(img: np.ndarray, poly: np.ndarray,
-                 colour: tuple[int, int, int], thickness: int = 1,
-                 dash: int = 9) -> None:
+#: Dashed outlines are recomputed only when a zone's shape changes. Zones are
+#: static almost all the time, and the segment maths was the single most
+#: expensive thing in the renderer — a polygon with a 1000px perimeter is a
+#: hundred individual antialiased line calls, per zone, per frame.
+_DASH_CACHE: dict[tuple, list[np.ndarray]] = {}
+
+
+def _dash_segments(poly: np.ndarray, dash: int) -> list[np.ndarray]:
+    key = (poly.tobytes(), poly.shape, dash)
+    cached = _DASH_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    segments: list[np.ndarray] = []
     n = len(poly)
     for i in range(n):
-        p1 = poly[i]
-        p2 = poly[(i + 1) % n]
+        p1 = poly[i].astype(np.float64)
+        p2 = poly[(i + 1) % n].astype(np.float64)
         dist = float(np.hypot(p2[0] - p1[0], p2[1] - p1[1]))
         if dist < 1:
             continue
@@ -421,11 +432,21 @@ def _dashed_poly(img: np.ndarray, poly: np.ndarray,
         for s in range(0, steps, 2):
             a = s / steps
             b = min(1.0, (s + 1) / steps)
-            pa = (int(p1[0] + (p2[0] - p1[0]) * a),
-                  int(p1[1] + (p2[1] - p1[1]) * a))
-            pb = (int(p1[0] + (p2[0] - p1[0]) * b),
-                  int(p1[1] + (p2[1] - p1[1]) * b))
-            cv2.line(img, pa, pb, colour, thickness, cv2.LINE_AA)
+            segments.append(np.array([p1 + (p2 - p1) * a,
+                                      p1 + (p2 - p1) * b], dtype=np.int32))
+    if len(_DASH_CACHE) > 256:          # a zone editor session, bounded
+        _DASH_CACHE.clear()
+    _DASH_CACHE[key] = segments
+    return segments
+
+
+def _dashed_poly(img: np.ndarray, poly: np.ndarray,
+                 colour: tuple[int, int, int], thickness: int = 1,
+                 dash: int = 9) -> None:
+    segments = _dash_segments(poly, dash)
+    if segments:
+        # One call into OpenCV for the whole outline rather than one per dash.
+        cv2.polylines(img, segments, False, colour, thickness, cv2.LINE_AA)
 
 
 def _tag(img: np.ndarray, text: str, at: tuple[int, int],

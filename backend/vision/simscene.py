@@ -292,7 +292,8 @@ def _draw_figure(img: np.ndarray, kps: np.ndarray, tone: int = 0) -> None:
     if head is not None:
         cv2.circle(alpha, (int(head[0]) - x0, int(head[1]) - y0),
                    max(3, int(scale * 0.38)), 255, -1, cv2.LINE_AA)
-    alpha = cv2.GaussianBlur(alpha, (0, 0), max(0.8, thick * 0.22))
+    k = max(3, int(thick * 0.5) | 1)      # odd kernel; a box blur is plenty
+    alpha = cv2.blur(alpha, (k, k))
 
     # Composite through the alpha: roi = roi*(1-a) + colour*a, in uint8.
     inv = cv2.cvtColor(255 - alpha, cv2.COLOR_GRAY2BGR)
@@ -302,21 +303,36 @@ def _draw_figure(img: np.ndarray, kps: np.ndarray, tone: int = 0) -> None:
     cv2.add(roi, tint, roi)
 
 
+def _make_shadow_sprite(size: int = 96) -> np.ndarray:
+    """One blurred ellipse, computed at import and scaled per figure.
+
+    Blurring a fresh shadow for every person on every frame was the single
+    most expensive thing in the simulated feed — a sigma-10 Gaussian per
+    figure, thirteen blurs a frame in the exam hall. A resize of a cached
+    sprite is visually identical and an order of magnitude cheaper.
+    """
+    h = size // 2
+    sprite = np.zeros((h, size), np.uint8)
+    cv2.ellipse(sprite, (size // 2, h // 2), (size // 3, h // 3), 0, 0, 360,
+                150, -1, cv2.LINE_AA)
+    return cv2.GaussianBlur(sprite, (0, 0), size * 0.07)
+
+
+_SHADOW = _make_shadow_sprite()
+
+
 def _contact_shadow(img: np.ndarray, fx: float, fy: float, scale: float) -> None:
     """A soft pool of shade under the feet, drawn in its own small window."""
     H, W = img.shape[:2]
-    rx, ry = max(4, int(scale * 1.1)), max(2, int(scale * 0.32))
-    sigma = max(1.2, scale * 0.22)
-    pad = int(sigma * 3) + 2
-    x0, y0 = max(0, int(fx) - rx - pad), max(0, int(fy) - ry - pad)
-    x1, y1 = min(W, int(fx) + rx + pad), min(H, int(fy) + ry + pad)
+    rw = max(8, int(scale * 3.0))
+    rh = max(4, int(scale * 1.0))
+    x0, y0 = max(0, int(fx) - rw // 2), max(0, int(fy) - rh // 2)
+    x1, y1 = min(W, x0 + rw), min(H, y0 + rh)
     if x1 - x0 < 4 or y1 - y0 < 4:
         return
     roi = img[y0:y1, x0:x1]
-    shadow = np.zeros(roi.shape[:2], np.uint8)
-    cv2.ellipse(shadow, (int(fx) - x0, int(fy) - y0), (rx, ry), 0, 0, 360,
-                140, -1, cv2.LINE_AA)
-    shadow = cv2.GaussianBlur(shadow, (0, 0), sigma)
+    shadow = cv2.resize(_SHADOW, (x1 - x0, y1 - y0),
+                        interpolation=cv2.INTER_LINEAR)
     inv = cv2.cvtColor(255 - (shadow // 2), cv2.COLOR_GRAY2BGR)
     cv2.multiply(roi, inv, roi, scale=1.0 / 255.0)
 

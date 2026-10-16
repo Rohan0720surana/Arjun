@@ -50,20 +50,75 @@ _YOLO = None            # the ultralytics class, imported once
 _TORCH_TUNED = False
 
 
+def tune_torch(streams: int = 1, model_streams: int | None = None
+               ) -> dict[str, Any]:
+    """Divide the CPU between the camera threads, once, at startup.
+
+    Torch defaults its intra-op pool to nearly every core — sensible for a
+    process doing one inference at a time, and actively harmful here. Each
+    camera runs inference on its own thread, so three cameras ask for three
+    pools of ten threads on a twelve-core machine, and the result is more time
+    spent switching between threads than running the model. On the development
+    laptop this starved a real webcam down to 2 fps while two scripted scenes
+    ran fine.
+
+    Set ``TORCH_THREADS`` in .env to override; 0 means "work it out".
+    """
+    global _TORCH_TUNED
+    cores = os.cpu_count() or 4
+    # Only cameras that actually run a model compete for the torch pool.
+    # Splitting it by total camera count gave a real webcam three threads
+    # while two scripted scenes - which run no model at all - held the rest,
+    # and the webcam fell to 3 fps.
+    model_streams = streams if model_streams is None else max(1, model_streams)
+
+    # Budget against the cores we actually have. Each camera thread needs some
+    # OpenCV parallelism for rendering and JPEG encoding; what the cameras
+    # that run *no* model take for that is subtracted, and the rest is split
+    # between the cameras that do.
+    #
+    # Both extremes were measured and both are wrong: handing torch nearly
+    # every core made three camera threads fight over twenty threads, and
+    # splitting the budget evenly took a lone camera from 13 fps to 8, because
+    # when YOLO is the only thing running it should have the machine.
+    cv_threads = max(1, min(4, cores // max(2, streams * 2)))
+    reserved = cv_threads * max(0, streams - model_streams)
+    if config.TORCH_THREADS > 0:
+        threads = config.TORCH_THREADS
+    else:
+        threads = max(2, min(cores - 1,
+                             (cores - reserved) // max(1, model_streams)))
+    # OpenCV has its own pool, and it is the worse offender of the two: every
+    # resize, blur and blend in the renderer fans out across every core, from
+    # inside each camera thread. Measured on three cameras, capping it was a
+    # 40% throughput gain.
+    report = {"cores": cores, "streams": streams,
+              "model_streams": model_streams, "threads": threads,
+              "cv_threads": cv_threads}
+    try:
+        import cv2
+        cv2.setNumThreads(cv_threads)
+    except Exception:                             # noqa: BLE001
+        pass
+    try:
+        import torch
+        torch.set_num_threads(threads)
+        report["applied"] = True
+    except Exception as exc:                      # noqa: BLE001
+        report["applied"] = False
+        report["error"] = f"{type(exc).__name__}: {exc}"
+    _TORCH_TUNED = True
+    return report
+
+
 def _load_yolo_class():
-    global _YOLO, _TORCH_TUNED
+    global _YOLO
     with _IMPORT_LOCK:
         if _YOLO is None:
             from ultralytics import YOLO          # heavy; imported on demand
             _YOLO = YOLO
         if not _TORCH_TUNED:
-            _TORCH_TUNED = True
-            if config.TORCH_THREADS > 0:
-                try:
-                    import torch
-                    torch.set_num_threads(config.TORCH_THREADS)
-                except Exception:                 # noqa: BLE001
-                    pass
+            tune_torch(1)
     return _YOLO
 
 

@@ -158,6 +158,11 @@ def _run_check(config) -> int:
     print("  Checking everything ARJUN needs.\n")
     ok = True
 
+    warning = config.synced_storage_warning()
+    if warning:
+        print("  Storage")
+        print(warning, end="\n\n")
+
     print("  Pretrained models")
     report = model_store.preflight(verbose=True)
     for key, present in report.items():

@@ -265,9 +265,10 @@ async def lifespan(app: FastAPI):
     model_cams = sum(1 for _, src in config.CAMERA_SOURCES
                      if not src.strip().lower().startswith("sim:"))
     threads = engine.tune_torch(len(config.CAMERA_SOURCES), model_cams)
+    running = ("none running models" if model_cams == 0
+               else f"{model_cams} running models")
     print(f"  CPU: {threads['cores']} cores · {threads['streams']} camera(s), "
-          f"{threads['model_streams']} running models · "
-          f"{threads['threads']} torch threads, "
+          f"{running} · {threads['threads']} torch threads, "
           f"{threads['cv_threads']} OpenCV threads")
 
     alert_manager = AlertManager(broadcast=_publish)

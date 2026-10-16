@@ -177,7 +177,8 @@ INFER_SIZE = _env_int("INFER_SIZE", 416)        # YOLO imgsz
 DET_CONF = _env_float("DET_CONF", 0.35)
 POSE_CONF = _env_float("POSE_CONF", 0.35)
 KEYPOINT_CONF = _env_float("KEYPOINT_CONF", 0.30)  # per-joint visibility floor
-POSE_EVERY_N = _env_int("POSE_EVERY_N", 2)      # run pose on every Nth frame
+POSE_EVERY_N = _env_int("POSE_EVERY_N", 2)      # mediapipe backend: pose every Nth
+OBJ_EVERY_N = _env_int("OBJ_EVERY_N", 3)        # objects are slow; look less often
 TORCH_THREADS = _env_int("TORCH_THREADS", 0)    # 0 = let torch decide
 
 MP_POSE_TASK = "pose_landmarker_lite.task"
@@ -444,13 +445,16 @@ ZONE_TYPES: dict[str, dict[str, object]] = {
 # Palette — the renderer and the dashboard share one set of colours
 # --------------------------------------------------------------------------- #
 
+# Colours are BGR, because OpenCV is. The look is a da Vinci anatomical study:
+# an ivory figure drawn on near-black, lit by a warm amber bloom, with gold
+# reserved for lettering so that the bones and the labels never compete.
 PALETTE = {
-    "canvas":      (14, 13, 12),      # BGR, near-black with a warm bias
+    "canvas":      (14, 13, 12),      # near-black, very slightly warm
     "grid":        (30, 29, 27),
-    "skeleton":    (108, 178, 232),   # cool blue bone
-    "skeleton_hot": (96, 150, 240),
-    "joint":       (205, 225, 245),
-    "gold":        (74, 160, 214),    # BGR for #D6A04A
+    "skeleton":    (214, 224, 236),   # ivory bone
+    "glow":        (58, 142, 222),    # amber bloom behind the bone
+    "joint":       (238, 244, 250),
+    "gold":        (74, 160, 214),    # #D6A04A — labels and accents
     "gold_soft":   (92, 140, 180),
     "object":      (150, 170, 175),
     "critical":    (62, 62, 224),

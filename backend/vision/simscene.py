@@ -262,35 +262,63 @@ def _draw_figure(img: np.ndarray, kps: np.ndarray, tone: int = 0) -> None:
     scale = max(5.0, (sk.shoulder_width(kps) or 18.0))
     thick = max(2, int(scale * 0.30))
 
-    alpha = np.zeros(img.shape[:2], np.uint8)
+    vis = kps[kps[:, 2] > 0]
+    if not len(vis):
+        return
+    H, W = img.shape[:2]
+
+    # The shadow and the body get their own tight windows. Sharing one padded
+    # window meant blurring an area several times the figure, with a kernel
+    # sized for the shadow, once per person per frame.
+    _contact_shadow(img, float(vis[:, 0].mean()), float(vis[:, 1].max()), scale)
+
+    pad = int(thick * 0.9) + 4
+    x0 = max(0, int(vis[:, 0].min()) - pad)
+    y0 = max(0, int(vis[:, 1].min()) - pad - int(scale * 0.5))
+    x1 = min(W, int(vis[:, 0].max()) + pad)
+    y1 = min(H, int(vis[:, 1].max()) + pad)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return
+    roi = img[y0:y1, x0:x1]
+
+    alpha = np.zeros(roi.shape[:2], np.uint8)
     for a, b, w in sk.EDGES:
         if not sk.seen(kps, a, b):
             continue
-        pa = (int(kps[a][0]), int(kps[a][1]))
-        pb = (int(kps[b][0]), int(kps[b][1]))
+        pa = (int(kps[a][0]) - x0, int(kps[a][1]) - y0)
+        pb = (int(kps[b][0]) - x0, int(kps[b][1]) - y0)
         cv2.line(alpha, pa, pb, 255, max(2, int(thick * w)), cv2.LINE_AA)
     head = sk.head_point(kps)
     if head is not None:
-        cv2.circle(alpha, (int(head[0]), int(head[1])),
+        cv2.circle(alpha, (int(head[0]) - x0, int(head[1]) - y0),
                    max(3, int(scale * 0.38)), 255, -1, cv2.LINE_AA)
-
-    # A contact shadow under the lowest joint keeps people on the floor
-    # instead of hovering over it.
-    vis = kps[kps[:, 2] > 0]
-    if len(vis):
-        fx, fy = float(vis[:, 0].mean()), float(vis[:, 1].max())
-        shadow = np.zeros_like(alpha)
-        cv2.ellipse(shadow, (int(fx), int(fy)),
-                    (max(4, int(scale * 1.1)), max(2, int(scale * 0.32))),
-                    0, 0, 360, 110, -1, cv2.LINE_AA)
-        shadow = cv2.GaussianBlur(shadow, (0, 0), scale * 0.45)
-        sa = (shadow.astype(np.float32) / 255.0)[:, :, None]
-        img[:] = (img.astype(np.float32) * (1.0 - sa * 0.55)).astype(np.uint8)
-
     alpha = cv2.GaussianBlur(alpha, (0, 0), max(0.8, thick * 0.22))
-    a = (alpha.astype(np.float32) / 255.0)[:, :, None]
-    body = np.full_like(img, colour, dtype=np.uint8).astype(np.float32)
-    img[:] = (img.astype(np.float32) * (1.0 - a) + body * a).astype(np.uint8)
+
+    # Composite through the alpha: roi = roi*(1-a) + colour*a, in uint8.
+    inv = cv2.cvtColor(255 - alpha, cv2.COLOR_GRAY2BGR)
+    tint = cv2.cvtColor(alpha, cv2.COLOR_GRAY2BGR)
+    cv2.multiply(tint, np.array(colour, np.uint8), tint, scale=1.0 / 255.0)
+    cv2.multiply(roi, inv, roi, scale=1.0 / 255.0)
+    cv2.add(roi, tint, roi)
+
+
+def _contact_shadow(img: np.ndarray, fx: float, fy: float, scale: float) -> None:
+    """A soft pool of shade under the feet, drawn in its own small window."""
+    H, W = img.shape[:2]
+    rx, ry = max(4, int(scale * 1.1)), max(2, int(scale * 0.32))
+    sigma = max(1.2, scale * 0.22)
+    pad = int(sigma * 3) + 2
+    x0, y0 = max(0, int(fx) - rx - pad), max(0, int(fy) - ry - pad)
+    x1, y1 = min(W, int(fx) + rx + pad), min(H, int(fy) + ry + pad)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return
+    roi = img[y0:y1, x0:x1]
+    shadow = np.zeros(roi.shape[:2], np.uint8)
+    cv2.ellipse(shadow, (int(fx) - x0, int(fy) - y0), (rx, ry), 0, 0, 360,
+                140, -1, cv2.LINE_AA)
+    shadow = cv2.GaussianBlur(shadow, (0, 0), sigma)
+    inv = cv2.cvtColor(255 - (shadow // 2), cv2.COLOR_GRAY2BGR)
+    cv2.multiply(roi, inv, roi, scale=1.0 / 255.0)
 
 
 def _draw_bag(img: np.ndarray, box) -> None:

@@ -231,7 +231,7 @@ TWILIO_WHATSAPP_TO = _env("TWILIO_WHATSAPP_TO")
 PUBLIC_BASE_URL = _env("PUBLIC_BASE_URL")   # needed for WhatsApp media links
 
 CLAUDE_API_KEY = _env("CLAUDE_API_KEY") or _env("ANTHROPIC_API_KEY")
-CLAUDE_MODEL = _env("CLAUDE_MODEL", "claude-sonnet-4-5")
+CLAUDE_MODEL = _env("CLAUDE_MODEL", "claude-opus-5-5")
 CLAUDE_MAX_TOKENS = _env_int("CLAUDE_MAX_TOKENS", 1600)
 CLAUDE_EVENT_LIMIT = _env_int("CLAUDE_EVENT_LIMIT", 120)
 

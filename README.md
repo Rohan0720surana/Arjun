@@ -292,6 +292,30 @@ feature and says so in the interface.
 | `TWILIO_*` | no WhatsApp; Telegram is the primary channel anyway |
 | `CLAUDE_API_KEY` | questions are answered by a local keyword search, reports by a local template |
 
+### Connect the alert channels
+
+```bash
+python setup_alerts.py
+```
+
+An interactive wizard for the two keys worth having. It reads them without
+echoing anything to the screen, checks each one against the live service
+before writing it down, discovers your Telegram chat ID for you, and edits
+only the keys it manages — every other line of your `.env` is left alone.
+
+Then send yourself one genuine alert:
+
+```bash
+python run.py --test-alert
+```
+
+This is not a "send a test message" helper. It builds a fallen skeleton,
+renders it through the real privacy renderer and pushes it through the real
+alert manager — same cooldowns, same database write, same snapshot, same
+notification thread a real incident uses. If it arrives, a real fall will too,
+and it will look exactly like this. When a channel fails it says why, in
+Telegram's own words, with the fix.
+
 ### Run
 
 ```bash
@@ -302,6 +326,7 @@ Then open <http://localhost:8000>.
 
 ```bash
 python run.py --check        # verify models, rules, cameras, codecs, keys
+python run.py --test-alert   # send yourself one real alert, then exit
 python run.py --sim          # three scripted scenes, no camera needed
 python run.py --demo         # short timers for a live demonstration
 python run.py --cameras "Corridor=0, Gate=http://192.168.1.7:4747/video"

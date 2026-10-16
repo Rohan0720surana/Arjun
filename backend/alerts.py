@@ -370,10 +370,18 @@ def _caption(alert: FiredAlert) -> str:
     return "\n".join(lines)
 
 
+#: Why each channel last failed. A silent False is fine in the frame loop and
+#: useless when somebody is standing in front of a judge asking why their
+#: phone did not buzz, so the reason is kept here and surfaced by
+#: ``run.py --test-alert`` and the dashboard's integrations strip.
+LAST_ERROR: dict[str, str] = {"telegram": "", "whatsapp": ""}
+
+
 def send_telegram(alert: FiredAlert) -> bool:
     """Push to Telegram. Returns False (quietly) when it is not configured."""
     token, chat = config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID
     if not token or not chat:
+        LAST_ERROR["telegram"] = "not configured"
         return False
     import requests
 
@@ -392,8 +400,18 @@ def send_telegram(alert: FiredAlert) -> bool:
             resp = requests.post(f"{base}/sendMessage",
                                  data={"chat_id": chat, "text": caption[:4000]},
                                  timeout=12)
-        return resp.status_code == 200
-    except Exception:                                       # noqa: BLE001
+        if resp.status_code == 200:
+            LAST_ERROR["telegram"] = ""
+            return True
+        # Telegram explains itself properly; pass that on rather than a code.
+        try:
+            detail = resp.json().get("description", resp.text[:200])
+        except Exception:                                   # noqa: BLE001
+            detail = resp.text[:200]
+        LAST_ERROR["telegram"] = f"HTTP {resp.status_code}: {detail}"
+        return False
+    except Exception as exc:                                # noqa: BLE001
+        LAST_ERROR["telegram"] = f"{type(exc).__name__}: {exc}"
         return False
 
 
@@ -402,6 +420,7 @@ def send_whatsapp(alert: FiredAlert) -> bool:
     sid, token = config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN
     to, frm = config.TWILIO_WHATSAPP_TO, config.TWILIO_WHATSAPP_FROM
     if not (sid and token and to and frm):
+        LAST_ERROR["whatsapp"] = "not configured"
         return False
     import requests
 
@@ -415,8 +434,17 @@ def send_whatsapp(alert: FiredAlert) -> bool:
         resp = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
             data=data, auth=(sid, token), timeout=12)
-        return resp.status_code in (200, 201)
-    except Exception:                                       # noqa: BLE001
+        if resp.status_code in (200, 201):
+            LAST_ERROR["whatsapp"] = ""
+            return True
+        try:
+            detail = resp.json().get("message", resp.text[:200])
+        except Exception:                                   # noqa: BLE001
+            detail = resp.text[:200]
+        LAST_ERROR["whatsapp"] = f"HTTP {resp.status_code}: {detail}"
+        return False
+    except Exception as exc:                                # noqa: BLE001
+        LAST_ERROR["whatsapp"] = f"{type(exc).__name__}: {exc}"
         return False
 
 
@@ -427,12 +455,14 @@ def channel_report() -> dict[str, Any]:
             "configured": bool(config.TELEGRAM_BOT_TOKEN
                                and config.TELEGRAM_CHAT_ID),
             "hint": "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env",
+            "last_error": LAST_ERROR["telegram"],
         },
         "whatsapp": {
             "configured": bool(config.TWILIO_ACCOUNT_SID
                                and config.TWILIO_AUTH_TOKEN
                                and config.TWILIO_WHATSAPP_TO),
             "hint": "Set the TWILIO_* keys in .env (sandbox is fine)",
+            "last_error": LAST_ERROR["whatsapp"],
         },
         "claude": {
             "configured": bool(config.CLAUDE_API_KEY),

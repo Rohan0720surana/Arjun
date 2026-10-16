@@ -6,8 +6,10 @@
 >    wifi is hostile — the scripted scenes stage a fall, a bag and a crowd for
 >    you on a 78-second loop).
 > 2. Dashboard open, full screen, **Demo timings** already on.
-> 3. Phone out with Telegram visible, if you configured it. The alert arriving
->    on a phone mid-sentence is the best thirty seconds of this demo.
+> 3. Phone out with Telegram visible. Set it up with `python setup_alerts.py`
+>    and prove it works with `python run.py --test-alert` **before** you walk
+>    on. The alert arriving on a phone mid-sentence is the best thirty seconds
+>    of this demo; finding out it is misconfigured on stage is the worst.
 > 4. Have a backpack and one teammate ready.
 >
 > Timings below assume two presenters: **A** talks, **B** does things in front
@@ -203,7 +205,7 @@ fingers over it.*
 | Camera won't open | Switch to the simulated feed: it's already a tile, or restart with `--sim`. Say "that's a scripted scene, and it runs through the identical detectors — which is also how we test them." |
 | Fall doesn't fire | Stay down. In demo mode it needs 1.2 s on the floor and a clean view of your hips. Lie across the frame, not towards the camera. |
 | Nothing is detected at all | Step back — you need your whole body in frame. Check the tile says **live** and the fps is above 5. |
-| Telegram silent | Skip it; the dashboard alert is the same information. Don't debug on stage. |
+| Telegram silent | Skip it; the dashboard alert is the same information. Don't debug on stage. Test it beforehand with `python run.py --test-alert`, which says exactly why a channel failed. |
 | Claude answers oddly | It's running the offline keyword search — say so. "No API key on this machine, so that's the local index. The point is it degrades instead of breaking." |
 | Wifi dies entirely | Everything except Telegram and Claude keeps working. Detection, clips, dashboard are all local. |
 

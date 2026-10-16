@@ -103,6 +103,8 @@ def main() -> int:
                         help="do not open a browser window")
     parser.add_argument("--check", action="store_true",
                         help="verify the installation and exit")
+    parser.add_argument("--test-alert", action="store_true",
+                        help="send yourself one real alert, then exit")
     parser.add_argument("--reload", action="store_true",
                         help="reload on code changes (development)")
     args = parser.parse_args()
@@ -140,6 +142,9 @@ def main() -> int:
     if args.check:
         return _run_check(config)
 
+    if args.test_alert:
+        return _run_test_alert(config)
+
     host, port = config.HOST, config.PORT
     shown = "localhost" if host in ("0.0.0.0", "::") else host
     if config.OPEN_BROWSER and not args.reload:
@@ -149,6 +154,143 @@ def main() -> int:
     uvicorn.run("backend.main:app", host=host, port=port, reload=args.reload,
                 log_level="warning", access_log=False)
     return 0
+
+
+def _run_test_alert(config) -> int:
+    """Fire one genuine alert and report what each channel did with it.
+
+    Deliberately not a "send a test message" helper. It builds a fallen
+    skeleton, renders it through the real privacy renderer, and pushes it
+    through the real AlertManager — the same cooldowns, the same database
+    write, the same snapshot, the same notification thread a real incident
+    uses. If this arrives on your phone, a real fall will too, and it will
+    look exactly like this.
+    """
+    import time
+
+    from backend import alerts as alerts_mod
+    from backend import events_db
+    from backend.alerts import AlertManager
+    from backend.camera_manager import CameraFlags
+    from backend.detectors.base import Candidate
+    from backend.privacy import PrivacyRenderer
+    from backend.state import CameraContext, TrackStore
+    from backend.vision import synth
+    from backend.world import Detection, FrameWorld
+    from backend.zone_store import Zone, ZoneSet
+
+    camera = "Test Camera"
+    telegram_ready = bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
+    whatsapp_ready = bool(config.TWILIO_ACCOUNT_SID and config.TWILIO_AUTH_TOKEN
+                          and config.TWILIO_WHATSAPP_TO)
+
+    print("  Sending one real alert through the full path.\n")
+    if not telegram_ready and not whatsapp_ready:
+        print("  No push channel is configured, so this will reach the")
+        print("  database and the dashboard but no phone.")
+        print("  Run  python setup_alerts.py  to connect Telegram.\n")
+
+    events_db.init()
+    manager = AlertManager(broadcast=lambda _msg: None)
+    manager.start()
+
+    # A person on the floor, built from the same parametric model the tests use.
+    width, height = 640, 360
+    kps = synth.lying(width * 0.45, height * 0.86, height * 0.42, angle_deg=86)
+    person = Detection(track_id=7, label="person", conf=0.91,
+                       box=synth.box_for(kps), keypoints=kps)
+    world = FrameWorld(camera=camera, ts=time.time(), frame_idx=1,
+                       width=width, height=height, persons=[person])
+
+    zone = Zone(id=1, camera=camera, name="West stairwell", ztype="loiter",
+                points=[[0.1, 0.5], [0.9, 0.5], [0.9, 1.0], [0.1, 1.0]])
+    zones = ZoneSet([zone])
+
+    tracks = TrackStore()
+    tracks.update(world)
+    ctx = CameraContext(camera=camera, world=world, tracks=tracks, zones=zones,
+                        flags=CameraFlags(), now=world.ts)
+    ctx.compute_memberships()
+
+    candidate = Candidate(
+        type="fall",
+        message=("Person #7 dropped 31% of their height in under 0.6s, torso "
+                 "86 deg from vertical, and has been down 2.4s in West "
+                 "stairwell."),
+        track_id=7, zone=zone, highlight="critical",
+        meta={"drop_body_heights": 0.31, "torso_angle_deg": 86.0,
+              "down_seconds": 2.4, "test_alert": True},
+    )
+
+    fired = manager.submit([candidate], ctx)
+    if not fired:
+        print("  The alert was suppressed by a cooldown. Wait a minute and "
+              "try again.")
+        return 1
+
+    alert = fired[0]
+    snapshot = PrivacyRenderer().render(
+        world, zones=zones, highlights={7: "critical"},
+        hud={"fps": 14.0, "demo": config.demo_mode()})
+    manager.attach_snapshots(fired, snapshot)
+
+    print(f"  Event ARJUN-{alert.event_id:05d} written to the database")
+    print(f"  Skeleton snapshot rendered ({snapshot.shape[1]}x{snapshot.shape[0]})")
+
+    if not telegram_ready and not whatsapp_ready:
+        print("\n  Nothing to send. The alert is on the dashboard timeline.")
+        return 0
+
+    print("  Handing it to the notification thread…", end="", flush=True)
+    deadline = time.time() + 30.0
+    while time.time() < deadline:
+        if manager.sent["telegram"] or manager.sent["whatsapp"] \
+                or manager.sent["failed"] or alerts_mod.LAST_ERROR["telegram"]:
+            break
+        print(".", end="", flush=True)
+        time.sleep(1.0)
+    print()
+
+    ok = True
+    print()
+    for name, ready in (("Telegram", telegram_ready),
+                        ("WhatsApp", whatsapp_ready)):
+        key = name.lower()
+        if not ready:
+            print(f"    skip {name}: not configured")
+            continue
+        if manager.sent[key]:
+            print(f"    ok   {name}: delivered — check your phone")
+        else:
+            ok = False
+            reason = alerts_mod.LAST_ERROR[key] or "no response yet"
+            print(f"    FAIL {name}: {reason}")
+            print(_telegram_hint(reason) if key == "telegram" else "")
+
+    manager.stop()
+    print()
+    if ok:
+        print("  That is exactly what a real fall will look like: the camera")
+        print("  name, the zone, the time, the measurements, and a skeleton —")
+        print("  never a photograph of the person.")
+    return 0 if ok else 1
+
+
+def _telegram_hint(reason: str) -> str:
+    low = reason.lower()
+    if "chat not found" in low:
+        return ("         The chat ID is wrong, or you have not messaged the "
+                "bot yet.\n         Open the bot in Telegram, press Start, "
+                "then re-run setup_alerts.py.")
+    if "unauthorized" in low or "401" in low:
+        return ("         The bot token is wrong. Re-run setup_alerts.py and "
+                "paste it again.")
+    if "bot was blocked" in low:
+        return "         You have blocked the bot in Telegram. Unblock it."
+    if "not configured" in low:
+        return "         Run  python setup_alerts.py  to connect Telegram."
+    return ("         Check the machine is online, then re-run "
+            "setup_alerts.py.")
 
 
 def _run_check(config) -> int:

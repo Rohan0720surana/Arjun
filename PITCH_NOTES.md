@@ -174,7 +174,7 @@ bag every few seconds and insists the alert still arrives."
 
 ### "Did you test this properly?"
 
-**Say:** "78 tests, they run in under a second, and they need no camera and no
+**Say:** "91 tests, they run in about a second, and they need no camera and no
 model weights. Each rule is driven by synthetic skeletons on a virtual clock
 against its real thresholds — a thirty-second loitering timer is tested in two
 milliseconds. That's the thing that let us actually iterate on the rules in a

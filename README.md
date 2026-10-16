@@ -257,7 +257,7 @@ arjun/
       sources.py          webcam / stream / file / sim
       model_store.py      weight download and caching
   frontend/               index.html · style.css · app.js  (no build step)
-  tests/                  78 tests, run in under a second
+  tests/                  91 tests, run in about a second
   clips/   data/   models/    (all gitignored)
 ```
 
@@ -439,12 +439,20 @@ identity, and identity is the thing we deliberately did not build.
 python -m pytest
 ```
 
-78 tests, under a second, no camera and no model weights required. Each rule is
+91 tests, about a second, no camera and no model weights required. Each rule is
 driven by synthetic skeletons on a virtual clock, against its **real**
 thresholds — a thirty-second loitering timer is tested in about two
 milliseconds. They cover each rule's yes case, its no case, and its re-arming;
 scale invariance for the fall rule; rotation and scale invariance for the hand
 gesture; and midnight-spanning opening hours.
+
+**The privacy guarantees are tested, not asserted.**
+`tests/test_privacy_invariants.py` reads the source and fails if anything
+other than the incident recorder gains a `VideoWriter` or an `imwrite`, if a
+detection rule reaches for the frame or writes to disk, if the renderer's
+signature ever accepts an image, if the ring buffer references a file path, or
+if the payload bound for Claude grows a field. A privacy property that lives
+only in a README is a property that will be gone in three months.
 
 ---
 

@@ -132,6 +132,29 @@ class TrackState:
             return 0.0
         return self.displacement(w) / dt
 
+    def path_speed(self, window_s: float | None = None) -> float:
+        """Speed along the path walked, in body heights per second.
+
+        :meth:`speed` measures the straight line from where you were to where
+        you are, which is the right question for "is this crowd moving the
+        same way" but the wrong one for "is this person standing still".
+        Someone pacing back and forth across a doorway returns almost zero
+        there and is plainly not stationary. This sums the segments instead.
+        """
+        w = window_s if window_s is not None else config.thresholds().run_window_s
+        window = self.since(w)
+        if len(window) < 2:
+            return 0.0
+        dt = window[-1].ts - window[0].ts
+        if dt <= 1e-3:
+            return 0.0
+        total = 0.0
+        for a, b in zip(window, window[1:]):
+            scale = max(1.0, (a.scale + b.scale) / 2.0)
+            total += math.hypot(b.foot[0] - a.foot[0],
+                                b.foot[1] - a.foot[1]) / scale
+        return total / dt
+
     def direction(self, window_s: float | None = None) -> float | None:
         """Heading in degrees (0 = right, 90 = down), or None if barely moving."""
         w = window_s if window_s is not None else config.thresholds().run_window_s

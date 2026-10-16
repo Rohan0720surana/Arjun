@@ -264,9 +264,10 @@ class Thresholds:
 
     # -- abandoned object -------------------------------------------------- #
     abandoned_seconds: float = 30.0
-    abandoned_owner_radius: float = 2.6  # in object-diagonals from the object
-    abandoned_move_tolerance: float = 0.35  # object-diagonals of drift allowed
-    abandoned_reclaim_s: float = 1.0
+    abandoned_owner_radius: float = 1.2  # body heights (~2 m) to count as with it
+    abandoned_claim_speed_bh_s: float = 0.5  # faster than this = walking past
+    abandoned_move_tolerance: float = 0.35  # drift allowed, in the bag's own size
+    abandoned_reclaim_s: float = 1.0     # how long you must linger to reclaim it
 
     # -- crowd ------------------------------------------------------------- #
     crowd_warn: int = 5
@@ -296,7 +297,7 @@ class Thresholds:
 
     # -- fire exit --------------------------------------------------------- #
     exit_blocked_seconds: float = 15.0
-    exit_person_still_bh_s: float = 0.25  # slower than this counts as standing
+    exit_person_still_bh_s: float = 0.35  # slower than this counts as standing
 
     # -- line counting ----------------------------------------------------- #
     line_cross_margin: float = 0.012     # normalised dead-band around the line

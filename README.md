@@ -591,16 +591,6 @@ was written by us except the code in this repository.
   the oldest statement we know of the principle this system is built on.
 
 ---
-
-## The team
-
-| Name | Role |
-|---|---|
-| _Your name_ | _role_ |
-| _Your name_ | _role_ |
-| _Your name_ | _role_ |
-| _Your name_ | _role_ |
-
 Built at **Renaissance**, CSI KJSSE's Buildathon at Abhiyantriki 2026,
 K J Somaiya School of Engineering. The brief is archived verbatim at
 [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md).

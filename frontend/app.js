@@ -516,12 +516,17 @@
       setTimeout(() => { delete entry.tile.dataset.alarm; }, 4200);
     }
 
-    toast({
-      title: alert.title,
-      message: alert.message,
-      severity: alert.severity,
-      onClick: () => openEvent(alert.id),
-    });
+    // Only interrupt for something that wants attention. Occupancy changes
+    // and exam notes still land in Observations; a counting line on a busy
+    // doorway would otherwise bury the camera wall under its own receipts.
+    if (alert.severity !== "info") {
+      toast({
+        title: alert.title,
+        message: alert.message,
+        severity: alert.severity,
+        onClick: () => openEvent(alert.id),
+      });
+    }
 
     // The SOS alert is silent on purpose: a chime would announce to the room
     // that somebody just asked for help.
@@ -1129,7 +1134,7 @@
                     <p class="toast__text">${escape(message || "")}</p>`;
     el.addEventListener("click", () => { onClick?.(); dismiss(el); });
     host.append(el);
-    setTimeout(() => dismiss(el), severity === "critical" ? 12000 : 7000);
+    setTimeout(() => dismiss(el), severity === "critical" ? 10000 : 5500);
 
     // Trim the stack to the newest four. This counts only the toasts that are
     // not already leaving, because dismiss() fades an element out and removes
@@ -1138,7 +1143,7 @@
     const live = () => Array.from(host.children)
                             .filter((n) => !n.classList.contains("is-going"));
     let standing = live();
-    while (standing.length > 4) dismiss(standing.shift());
+    while (standing.length > 3) dismiss(standing.shift());
   }
 
   function dismiss(el) {

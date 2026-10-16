@@ -881,6 +881,9 @@ select:focus, input:focus { border-color: var(--gold-deep); outline: none; }
   font-size: 12px;
   color: var(--parchment-2);
 }
+/* The empty state is prose, not a row: without this it inherits the grid and
+   is wrung out through the 74px timestamp column. */
+.audit li.empty { display: block; padding: 10px 0; }
 .audit time { font-family: var(--mono); font-size: 11px; color: var(--parchment-3); }
 .audit .what { color: var(--gold); letter-spacing: 0.05em; }
 .audit .denied .what { color: var(--cinnabar); }
@@ -1083,7 +1086,21 @@ select:focus, input:focus { border-color: var(--gold-deep); outline: none; }
   display: flex;
   flex-direction: column;
   gap: 9px;
-  max-width: min(380px, calc(100vw - 36px));
+  max-width: min(340px, calc(100vw - 36px));
+}
+
+/* On a short screen the stack must not become the page. */
+@media (max-height: 720px) {
+  .toasts { gap: 7px; }
+  .toast { padding: 9px 13px; }
+  .toast__title { font-size: 14px; }
+  .toast__text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
+    overflow: hidden;
+  }
 }
 .toast {
   background: var(--ink-raised);
@@ -1169,7 +1186,9 @@ select:focus, input:focus { border-color: var(--gold-deep); outline: none; }
   .masthead__controls { justify-content: flex-start; padding-top: 0; }
   .wall { grid-template-columns: minmax(0, 1fr); }
   .folio__note { display: none; }
-  .timeline { max-height: none; }
+  /* Keep the feed scrollable on a phone too. Letting it run to its full
+     height pushed everything below it thousands of pixels down the page. */
+  .timeline { max-height: 60vh; }
   .ledger__hero { gap: 14px; }
   .audit li { grid-template-columns: 62px 1fr; }
   .audit li .detail { grid-column: 1 / -1; color: var(--parchment-3); }

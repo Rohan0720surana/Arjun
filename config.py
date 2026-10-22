@@ -246,6 +246,7 @@ CLIP_FPS = _env_float("CLIP_FPS", 12.0)
 CLIP_CODECS = ("avc1", "mp4v")   # tried in order; avc1 plays in every browser
 CLIP_RETENTION_DAYS = _env_int("CLIP_RETENTION_DAYS", 7)
 MAX_CLIPS_ON_DISK = _env_int("MAX_CLIPS_ON_DISK", 60)
+RECORD_SIMULATED_CLIPS = _env_bool("RECORD_SIMULATED_CLIPS", False)
 
 # Rendering of the privacy view.
 RENDER_BLOOM = _env_bool("RENDER_BLOOM", True)   # the glow on the skeletons

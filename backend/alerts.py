@@ -163,13 +163,15 @@ class AlertManager:
             if ctx.simulated:
                 meta["simulated_feed"] = True
 
+            should_clip = spec.clip and (not ctx.simulated or config.RECORD_SIMULATED_CLIPS)
+
             event_id = events_db.add_event(
                 camera=ctx.camera, etype=cand.type, severity=severity,
                 message=cand.message, ts=now,
                 zone_id=cand.zone.id if cand.zone else None,
                 zone_name=cand.zone.name if cand.zone else None,
                 track_id=cand.track_id, meta=meta, simulated=ctx.simulated,
-                clip_state="pending" if spec.clip else "none",
+                clip_state="pending" if should_clip else "none",
             )
 
             alert = FiredAlert(
@@ -179,7 +181,7 @@ class AlertManager:
                 zone_id=cand.zone.id if cand.zone else None,
                 zone_name=cand.zone.name if cand.zone else None,
                 simulated=ctx.simulated, meta=meta,
-                clip_state="pending" if spec.clip else "none",
+                clip_state="pending" if should_clip else "none",
             )
 
             # Highlight the subject on the privacy view for a few seconds.
@@ -190,7 +192,7 @@ class AlertManager:
                         cand.highlight or severity,
                     )
 
-            if spec.clip:
+            if should_clip:
                 rec = self._recorders.get(ctx.camera)
                 if rec is not None:
                     started = rec.trigger(

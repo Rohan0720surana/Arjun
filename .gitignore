@@ -36,3 +36,13 @@ desktop.ini
 *.log
 yolov8*.pt
 openh264-*.dll
+
+# --- eval dataset recordings & extracted pose caches ---------------------- #
+eval/cache/*
+!eval/cache/.gitkeep
+eval/datasets/
+data/urfd/
+*.mp4
+*.avi
+*.zip
+

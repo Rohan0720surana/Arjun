@@ -456,6 +456,42 @@ identity, and identity is the thing we deliberately did not build.
 * An evaluation set of real falls, to replace hand-tuned thresholds with
   measured ones.
 
+## Fall Detection Evaluation
+
+ARJUN includes an offline, reproducible benchmark pipeline for the production rule-based `FallDetector` (`backend/detectors/fall.py`) evaluated against real-world video sequences from the [UR Fall Detection Dataset (URFD)](http://fenix.ur.edu.pl/~mkepski/ds/uf.html) (Camera 0 RGB).
+
+* **Full Pipeline & Protocol Documentation**: [`eval/README.md`](eval/README.md)
+* **10-Recording Benchmark Report**: [`eval/results/URFD_10_RECORDINGS.md`](eval/results/URFD_10_RECORDINGS.md)
+
+### 10-Recording Baseline Summary (URFD Camera 0 RGB)
+
+| Category | Sequences | Frames | Stage-1 Drop Trigger | Confirmed Alerts | Primary Evaluation Verdict |
+|---|---|---|---|---|---|
+| **Falls** | `fall-01` .. `fall-05` | 496 | 5/5 (100%) | 1 alert (`fall-04`) | **5/5 INSUFFICIENT_OBSERVATION** (all clips truncate $< 2.0\text{s}$ post-impact; `fall-04` alert preserved as diagnostic detection) |
+| **ADLs** | `adl-01` .. `adl-05` | 840 | 1/5 drop (adl-05 bend) | 0 alerts | **5/5 TRUE NEGATIVE** (0 false alarms, 0.0 false alerts/min) |
+
+* **Protocol**: Predefined 2.0-second post-impact observation requirement applied consistently *before* evaluating predictions, eliminating outcome-dependent eligibility bias.
+* **Stage-1 Drop Sensitivity**: **5/5 (100%)** — all falls triggered raw kinematic downward velocity.
+* **Primary Confirmed Fall Recall & F1**: **N/A (undefined)** because zero eligible positive fall recordings exist in the primary denominator (all available URFD clips truncate $< 2.0\text{s}$ post-fall).
+* **Separately Observed Detections**: **1 confirmed alert** on `fall-04` at $t = 3.14\text{s}$ (latency: 1.70s) enabled by an early transition-phase kinematic drop trigger ($t = 1.13\text{s}$).
+* **ADL Specificity**: **5/5 (100%)** ($N=5$ exploratory, 840 frames / ~27.8 seconds total observation, 0.00 false alerts/min).
+* **Production Code**: **Unchanged**. Tested strictly against existing hand-tuned thresholds (`FALL_DOWN_CONFIRM_SECS = 2.0s`).
+
+### Running the Evaluation
+
+Prerequisites: Active Python environment with project dependencies (`ultralytics`, `opencv-python`, `numpy`, `pytest`).
+
+```powershell
+# Run the complete 10-sequence benchmark (falls + ADLs with tracking continuity audit)
+python eval/urfd_batch_evaluation.py
+
+# Run fall pilot sequences only (fall-01 to fall-05)
+python eval/urfd_annotations.py
+
+# Run ADL non-fall sequences only (adl-01 to adl-05)
+python eval/urfd_adl_evaluation.py
+```
+
 ---
 
 ## Tests
@@ -464,10 +500,11 @@ identity, and identity is the thing we deliberately did not build.
 python -m pytest
 ```
 
-91 tests, about a second, no camera and no model weights required. Each rule is
+190 tests, about two seconds, no camera and no model weights required. Each rule is
 driven by synthetic skeletons on a virtual clock, against its **real**
 thresholds — a thirty-second loitering timer is tested in about two
-milliseconds. They cover each rule's yes case, its no case, and its re-arming;
+milliseconds. The suite covers rule logic, scale invariance, privacy invariants,
+offline evaluation harness, annotation alignment, and URFD benchmark verification.
 scale invariance for the fall rule; rotation and scale invariance for the hand
 gesture; and midnight-spanning opening hours.
 

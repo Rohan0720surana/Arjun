@@ -465,13 +465,23 @@ def load_urfd_sequence(
     return seq
 
 
+URFD_FALL_SEQUENCES: list[str] = [
+    "fall-01",
+    "fall-02",
+    "fall-03",
+    "fall-04",
+    "fall-05",
+]
+
+
 def evaluate_urfd_pilot(
     urfd_dir: str | Path = "data/urfd",
     cache_dir: str | Path = "eval/cache/urfd",
     required_confirmation_s: float = 2.0,
+    seq_ids: list[str] | None = None,
 ) -> int:
     """
-    Evaluate the real URFD fall recordings (fall-01, fall-02) using verified ground truth.
+    Evaluate the real URFD fall recordings using verified ground truth.
     """
     from eval.metrics import evaluate_results
     from eval.runner import OfflineFallRunner
@@ -482,7 +492,7 @@ def evaluate_urfd_pilot(
     print(" URFD GROUND-TRUTH ANNOTATION INSPECTION")
     print("=" * 78)
 
-    pilot_ids = ["fall-01", "fall-02"]
+    pilot_ids = seq_ids if seq_ids is not None else URFD_FALL_SEQUENCES
     for sid in pilot_ids:
         ann = manifest.get(sid)
         if ann is None:
@@ -527,6 +537,8 @@ def evaluate_urfd_pilot(
         benchmark_sequences,
         results,
         required_confirmation_s=required_confirmation_s,
+        dataset_type="URFD_PILOT",
+        report_title="ARJUN FALL DETECTION -- URFD PILOT EVALUATION REPORT",
     )
 
     print("\n" + report.to_text() + "\n")

@@ -393,3 +393,53 @@ def test_urfd_fall01_and_fall02_evaluates_as_insufficient_observation():
 
     assert report.sequence_evaluations[0].verdict == "INSUFFICIENT_OBSERVATION"
     assert report.sequence_evaluations[1].verdict == "INSUFFICIENT_OBSERVATION"
+
+
+def test_urfd_all_5_falls_manifest():
+    """Verify manifest includes all 5 official fall sequences with verified transitions."""
+    urfd_dir = Path("data/urfd")
+    if not (urfd_dir / "urfall-cam0-falls.csv").is_file():
+        pytest.skip("URFD falls CSV not available")
+
+    manifest = build_urfd_manifest(urfd_dir)
+    for sid in ["fall-01", "fall-02", "fall-03", "fall-04", "fall-05"]:
+        assert sid in manifest
+        ann = manifest[sid]
+        assert ann.is_fall is True
+        assert ann.fall_transition_start_s is not None
+        assert ann.fallen_state_start_s is not None
+        assert ann.fall_transition_start_s < ann.fallen_state_start_s
+        assert ann.fallen_state_start_s < ann.duration_s
+
+
+def test_urfd_fall03_through_fall05_evaluations():
+    """Verify all 3 fall sequences are INSUFFICIENT_OBSERVATION (< 2.0s), with fall-04 alert observed."""
+    urfd_dir = Path("data/urfd")
+    cache_dir = Path("eval/cache/urfd")
+    if not (cache_dir / "fall-05-cam0-rgb.npz").is_file():
+        pytest.skip("Caches for fall-03..05 not available")
+
+    manifest = build_urfd_manifest(urfd_dir)
+    seq03 = load_urfd_sequence(cache_dir / "fall-03-cam0-rgb.npz", manifest)
+    seq04 = load_urfd_sequence(cache_dir / "fall-04-cam0-rgb.npz", manifest)
+    seq05 = load_urfd_sequence(cache_dir / "fall-05-cam0-rgb.npz", manifest)
+
+    runner = OfflineFallRunner()
+    results = runner.evaluate_benchmark([seq03, seq04, seq05])
+    report = evaluate_results([seq03, seq04, seq05], results, required_confirmation_s=2.0)
+
+    # All three clips have post-fallen duration < 2.0s (1.26s, 1.74s, 1.43s)
+    assert report.sequence_evaluations[0].verdict == "INSUFFICIENT_OBSERVATION"
+    assert report.sequence_evaluations[1].verdict == "INSUFFICIENT_OBSERVATION"
+    assert report.sequence_evaluations[2].verdict == "INSUFFICIENT_OBSERVATION"
+    assert report.insufficient_observation_sequences == 3
+    assert report.fall_sequences == 0
+    assert report.tp == 0
+
+    # fall-04 alert is preserved as an observed detection
+    assert report.observed_fall_alerts == 1
+    assert report.sequence_evaluations[1].matched_alert_timestamp == pytest.approx(3.136, abs=0.01)
+    assert report.sequence_evaluations[1].latency_s == pytest.approx(1.702, abs=0.01)
+    assert "Separately observed confirmed alert" in report.sequence_evaluations[1].notes
+
+

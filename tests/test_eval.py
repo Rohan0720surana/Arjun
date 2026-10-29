@@ -388,13 +388,18 @@ def test_adequate_observation_without_detector_trigger_is_genuine_fn():
     assert report.sequence_evaluations[0].verdict == "FN"
 
 
-def test_insufficient_observation_with_confirmed_alert_counts_as_tp():
-    """If a detector manages to confirm an in-window alert despite short footage, it counts as TP."""
+def test_insufficient_observation_with_confirmed_alert_counts_as_insufficient():
+    """An alert firing on short footage does NOT grant eligibility for primary recall.
+
+    Predefined observation requirement (< 2.0s post-fall) classifies the clip as
+    INSUFFICIENT_OBSERVATION, avoiding outcome-dependent eligibility bias. The confirmed
+    alert is preserved as an observed detection.
+    """
     ann = SequenceAnnotation(
         sequence_id="S-FAST-ALERT", name="Fast Alert", is_fall=True, duration_s=3.5,
         fall_start_s=1.0, fall_impact_s=2.0,
     )
-    # Available post-impact: 1.5s. An alert successfully fires at t=2.8s
+    # Available post-impact: 1.5s (< 2.0s required). Alert fires at t=2.8s
     benchmark = [Sequence(annotation=ann, fps=15.0)]
     results = [
         SequenceResult(
@@ -406,10 +411,12 @@ def test_insufficient_observation_with_confirmed_alert_counts_as_tp():
     ]
 
     report = evaluate_results(benchmark, results, required_confirmation_s=2.0)
-    assert report.tp == 1
+    assert report.tp == 0
     assert report.fn == 0
-    assert report.insufficient_observation_sequences == 0
-    assert report.sequence_evaluations[0].verdict == "TP"
+    assert report.insufficient_observation_sequences == 1
+    assert report.sequence_evaluations[0].verdict == "INSUFFICIENT_OBSERVATION"
+    assert report.observed_fall_alerts == 1
+    assert report.observed_mean_latency_s == pytest.approx(0.8, abs=0.01)
 
 
 def test_exact_boundary_cases_for_observation_window():
@@ -524,11 +531,11 @@ def test_zero_division_no_positives_all_tn():
 
 
 # --------------------------------------------------------------------------- #
-# Report Text Formatting
+# Report Text Formatting — Labels & Dataset Type
 # --------------------------------------------------------------------------- #
 
 def test_report_text_contains_disclaimer_and_metrics():
-    """Report text contains synthetic disclaimer and metric labels."""
+    """Synthetic report text contains correct disclaimer, heading and metric labels."""
     benchmark = get_synthetic_benchmark(fps=15.0)
     runner = OfflineFallRunner()
     results = runner.evaluate_benchmark(benchmark)
@@ -542,3 +549,208 @@ def test_report_text_contains_disclaimer_and_metrics():
     assert "F1-Score" in text
     assert "True Positives" in text
     assert "True Negatives" in text
+    # Synthetic note must appear in the protocol footer
+    assert "Synthetic Poses" in text
+    # Real-dataset label must NOT appear in a synthetic report
+    assert "REAL DATASET" not in text
+
+
+def test_report_text_urfd_pilot_label():
+    """A report with dataset_type='URFD_PILOT' uses the URFD title, not the synthetic banner."""
+    benchmark = get_synthetic_benchmark(fps=15.0)
+    runner = OfflineFallRunner()
+    results = runner.evaluate_benchmark(benchmark)
+    report = evaluate_results(
+        benchmark,
+        results,
+        dataset_type="URFD_PILOT",
+        report_title="ARJUN FALL DETECTION -- URFD PILOT EVALUATION REPORT",
+    )
+    text = report.to_text()
+
+    # Real-dataset heading must be present
+    assert "URFD PILOT EVALUATION REPORT" in text
+    assert "REAL DATASET: URFD_PILOT" in text
+    # Synthetic-only disclaimer must NOT appear
+    assert "SYNTHETIC BENCHMARK ONLY" not in text
+    assert "DOES NOT REFLECT REAL-WORLD FIELD ACCURACY" not in text
+    # Real-video footer note must appear instead of the synthetic note
+    assert "Real Video" in text
+    assert "Synthetic Poses" not in text
+
+
+# --------------------------------------------------------------------------- #
+# Report Text Formatting — N/A for Zero Denominators
+# --------------------------------------------------------------------------- #
+
+def test_report_text_na_for_zero_precision_and_recall_denominators():
+    """When both TP+FP==0 and TP+FN==0, precision, recall, and F1 display as N/A."""
+    # A benchmark with only an UNVERIFIED sequence produces no TP, FP, FN, TN.
+    ann_unverified = SequenceAnnotation(
+        sequence_id="S-UNV", name="Unverified", is_fall=None, duration_s=4.0,
+    )
+    benchmark = [Sequence(annotation=ann_unverified, fps=15.0)]
+    results = [
+        SequenceResult(
+            sequence_id="S-UNV", annotation_name="Unverified",
+            is_fall_ground_truth=None, alerts=[], alert_timestamps=[],
+        )
+    ]
+    report = evaluate_results(benchmark, results)
+    text = report.to_text()
+
+    # All four metrics are undefined: denominators are all zero
+    assert "Precision              : N/A" in text
+    assert "Recall (Sensitivity)   : N/A" in text
+    assert "F1-Score               : N/A" in text
+    assert "Specificity (TNR)      : N/A" in text
+
+    # Underlying float values are still 0.0 (the safe sentinel), not changed
+    assert report.precision == 0.0
+    assert report.recall == 0.0
+    assert report.f1 == 0.0
+    assert report.specificity == 0.0
+
+
+def test_report_text_na_specificity_only_fall_sequences():
+    """When there are no ADL sequences (TN+FP==0), specificity displays as N/A.
+
+    Precision and recall are still defined if TP and FN are non-zero.
+    """
+    ann_fall = SequenceAnnotation(
+        sequence_id="S-FALL", name="Fall", is_fall=True, duration_s=6.0,
+        fall_start_s=1.0, fall_impact_s=1.5,
+    )
+    benchmark = [Sequence(annotation=ann_fall, fps=15.0)]
+    # Alert fires inside the window -> TP=1, FN=0, FP=0, TN=0
+    results = [
+        SequenceResult(
+            sequence_id="S-FALL", annotation_name="Fall",
+            is_fall_ground_truth=True, alerts=[_mock_candidate()],
+            alert_timestamps=[2.5],
+        )
+    ]
+    report = evaluate_results(benchmark, results)
+    text = report.to_text()
+
+    # Precision and recall are defined (TP=1)
+    assert "Precision              : N/A" not in text
+    assert "Recall (Sensitivity)   : N/A" not in text
+    # Specificity is undefined because there are no ADL sequences (TN+FP==0)
+    assert "Specificity (TNR)      : N/A" in text
+
+
+def test_report_text_valid_denominators_show_percentages():
+    """When denominators are non-zero, metrics render as percentages (not N/A)."""
+    benchmark = get_synthetic_benchmark(fps=15.0)
+    runner = OfflineFallRunner()
+    results = runner.evaluate_benchmark(benchmark)
+    # This benchmark has both falls and ADL, so all denominators are non-zero
+    report = evaluate_results(benchmark, results)
+    text = report.to_text()
+
+    # None of the four metrics should show N/A
+    for metric_label in ["Precision", "Recall (Sensitivity)", "F1-Score", "Specificity (TNR)"]:
+        assert f"{metric_label}      : N/A" not in text, (
+            f"Expected a percentage for {metric_label!r}, found N/A"
+        )
+    # All should show 100.0% (perfect synthetic benchmark)
+    assert "Precision              : 100.0%" in text
+    assert "Recall (Sensitivity)   : 100.0%" in text
+    assert "F1-Score               : 100.0%" in text
+    assert "Specificity (TNR)      : 100.0%" in text
+
+
+# --------------------------------------------------------------------------- #
+# Prediction-Independent Eligibility Tests
+# --------------------------------------------------------------------------- #
+
+def test_prediction_independent_eligibility_insufficient_clip_with_alert():
+    """An alert firing on a clip with < 2.0s post-fall observation does not force TP eligibility.
+
+    The sequence must remain INSUFFICIENT_OBSERVATION for the primary recall denominator,
+    while preserving the confirmed alert as a separately observed detection.
+    """
+    ann = SequenceAnnotation(
+        sequence_id="S-SHORT-ALERT", name="Short Clip With Alert",
+        is_fall=True, duration_s=3.2,
+        fall_start_s=0.5, fall_impact_s=1.5,
+    )
+    # Available post-fall footage: 3.2s - 1.5s = 1.7s (< 2.0s confirmation required)
+    benchmark = [Sequence(annotation=ann, fps=15.0)]
+    results = [
+        SequenceResult(
+            sequence_id="S-SHORT-ALERT", annotation_name="Short Clip With Alert",
+            is_fall_ground_truth=True,
+            alerts=[_mock_candidate()],
+            alert_timestamps=[3.1],  # Alert inside [1.5s, 6.5s] window
+        )
+    ]
+
+    report = evaluate_results(benchmark, results, required_confirmation_s=2.0)
+
+    # Primary recall denominator excludes the sequence
+    assert report.fall_sequences == 0
+    assert report.insufficient_observation_sequences == 1
+    assert report.tp == 0
+    assert report.fn == 0
+    assert report.fp == 0
+    assert report.sequence_evaluations[0].verdict == "INSUFFICIENT_OBSERVATION"
+
+    # Confirmed alert and latency are preserved as diagnostic observed detections
+    assert report.observed_fall_alerts == 1
+    assert report.observed_mean_latency_s == pytest.approx(1.6, abs=0.01)
+    assert report.sequence_evaluations[0].matched_alert_timestamp == pytest.approx(3.1, abs=0.01)
+    assert report.sequence_evaluations[0].latency_s == pytest.approx(1.6, abs=0.01)
+    assert "Separately observed confirmed alert" in report.sequence_evaluations[0].notes
+
+
+def test_report_metrics_na_when_all_falls_insufficient_observation():
+    """When all fall clips have insufficient observation, recall and F1 display as N/A."""
+    ann_fall = SequenceAnnotation(
+        sequence_id="S-INSUF", name="Short Fall",
+        is_fall=True, duration_s=3.0,
+        fall_start_s=0.5, fall_impact_s=1.5,
+    )
+    ann_adl = SequenceAnnotation(
+        sequence_id="S-ADL", name="Normal ADL",
+        is_fall=False, duration_s=5.0,
+    )
+    benchmark = [
+        Sequence(annotation=ann_fall, fps=15.0),
+        Sequence(annotation=ann_adl, fps=15.0),
+    ]
+    results = [
+        SequenceResult(
+            sequence_id="S-INSUF", annotation_name="Short Fall",
+            is_fall_ground_truth=True, alerts=[], alert_timestamps=[],
+        ),
+        SequenceResult(
+            sequence_id="S-ADL", annotation_name="Normal ADL",
+            is_fall_ground_truth=False, alerts=[], alert_timestamps=[],
+        ),
+    ]
+
+    report = evaluate_results(
+        benchmark, results,
+        required_confirmation_s=2.0,
+        dataset_type="PILOT_BENCHMARK",
+        report_title="ARJUN FALL DETECTION -- PILOT BENCHMARK",
+    )
+    text = report.to_text()
+
+    assert report.insufficient_observation_sequences == 1
+    assert report.fall_sequences == 0
+    assert report.adl_sequences == 1
+    assert report.tp == 0
+    assert report.fn == 0
+    assert report.tn == 1
+
+    # Primary recall and precision are N/A; specificity is 100.0%
+    assert "Precision              : N/A" in text
+    assert "Recall (Sensitivity)   : N/A" in text
+    assert "F1-Score               : N/A" in text
+    assert "Specificity (TNR)      : 100.0%" in text
+    assert "Latency                : N/A" in text
+    assert "confirmed-alert recall is undefined (N/A)" in text
+

@@ -427,12 +427,13 @@ class VideoPoseExtractor:
         name: str | None = None,
         annotation: SequenceAnnotation | None = None,
         extensions: tuple[str, ...] = (".png", ".jpg", ".jpeg"),
+        timestamps: list[float] | np.ndarray | None = None,
     ) -> Sequence:
         """
-        Extract poses from a directory of numbered image frames (e.g. URFD PNG sequence).
+        Extract poses from a directory of numbered image frames (e.g. URFD or UP-Fall PNG sequence).
 
         Frames are strictly sorted numerically rather than lexicographically.
-        Timestamps are generated as t = frame_idx / fps.
+        Timestamps are taken from the `timestamps` array if provided, or generated as t = frame_idx / fps.
         Corrupt or unreadable images are skipped with a warning.
         """
         dir_path = Path(image_dir)
@@ -464,7 +465,11 @@ class VideoPoseExtractor:
                     print(f"[WARN] Failed to read or parse image: {img_path}", file=sys.stderr)
                     continue
 
-                ts = frame_idx / fps
+                if timestamps is not None and frame_idx < len(timestamps):
+                    ts = float(timestamps[frame_idx])
+                else:
+                    ts = frame_idx / fps
+
                 detections = self._infer_frame(model, frame)
                 frames.append(
                     FrameObservation(
@@ -480,7 +485,10 @@ class VideoPoseExtractor:
         if not frames:
             raise ValueError(f"Directory {dir_path} contains no readable image frames.")
 
-        duration_s = (frame_idx / fps) if frame_idx > 0 else 0.0
+        if timestamps is not None and len(timestamps) > 0:
+            duration_s = float(timestamps[-1])
+        else:
+            duration_s = (frame_idx / fps) if frame_idx > 0 else 0.0
 
         if annotation is not None:
             seq_ann = annotation
